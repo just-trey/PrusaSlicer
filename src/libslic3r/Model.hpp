@@ -168,7 +168,7 @@ private:
 	friend class cereal::access;
 	friend class UndoRedo::StackImpl;
 	// Create an object for deserialization, don't allocate IDs for ModelMaterial and its config.
-	ModelMaterial() : ObjectBase(-1), config(-1), m_model(nullptr) { assert(this->id().invalid()); assert(this->config.id().invalid()); }
+	ModelMaterial() : ObjectBase(-1), config(-1) { assert(this->id().invalid()); assert(this->config.id().invalid()); }
 	template<class Archive> void serialize(Archive &ar) { 
 		assert(this->id().invalid()); assert(this->config.id().invalid());
 		Internal::StaticSerializationWrapper<ModelConfigObject> config_wrapper(config);
@@ -188,7 +188,7 @@ public:
     void assign(const LayerHeightProfile &rhs) { if (! this->timestamp_matches(rhs)) { m_data = rhs.m_data; this->copy_timestamp(rhs); } }
     void assign(LayerHeightProfile &&rhs) { if (! this->timestamp_matches(rhs)) { m_data = std::move(rhs.m_data); this->copy_timestamp(rhs); } }
 
-    std::vector<coordf_t> get() const throw() { return m_data; }
+    const std::vector<coordf_t>& get() const throw() { return m_data; }
     bool                  empty() const throw() { return m_data.empty(); }
     void                  set(const std::vector<coordf_t> &data) { if (m_data != data) { m_data = data; this->touch(); } }
     void                  set(std::vector<coordf_t> &&data) { if (m_data != data) { m_data = std::move(data); this->touch(); } }
@@ -228,7 +228,7 @@ enum class CutConnectorType : int {
 };
 
 enum class CutConnectorStyle : int {
-    Prizm
+    Prism
     , Frustum
     , Undef
     //,Claw
@@ -246,7 +246,7 @@ enum class CutConnectorShape : int {
 struct CutConnectorAttributes
 {
     CutConnectorType    type{ CutConnectorType::Plug };
-    CutConnectorStyle   style{ CutConnectorStyle::Prizm };
+    CutConnectorStyle   style{ CutConnectorStyle::Prism };
     CutConnectorShape   shape{ CutConnectorShape::Circle };
 
     CutConnectorAttributes() {}
@@ -316,7 +316,7 @@ enum class ModelVolumeType : int {
     SUPPORT_ENFORCER,
 };
 
-enum class ModelObjectCutAttribute : int { KeepUpper, KeepLower, FlipUpper, FlipLower, PlaceOnCutUpper, PlaceOnCutLower, CreateDowels };
+enum class ModelObjectCutAttribute : int { KeepUpper, KeepLower, KeepAsParts, FlipUpper, FlipLower, PlaceOnCutUpper, PlaceOnCutLower, CreateDowels, InvalidateCutInfo };
 using ModelObjectCutAttributes = enum_bitmask<ModelObjectCutAttribute>;
 ENABLE_ENUM_BITMASK_OPERATORS(ModelObjectCutAttribute);
 
@@ -343,7 +343,7 @@ public:
     // The pairs of <z, layer_height> are packed into a 1D array.
     LayerHeightProfile      layer_height_profile;
     // Whether or not this object is printable
-    bool                    printable;
+    bool                    printable { true };
 
     // This vector holds position of selected support points for SLA. The data are
     // saved in mesh coordinates to allow using them for several instances.
@@ -392,16 +392,27 @@ public:
 
     ModelInstance*          add_instance();
     ModelInstance*          add_instance(const ModelInstance &instance);
-    ModelInstance*          add_instance(const Vec3d &offset, const Vec3d &scaling_factor, const Vec3d &rotation, const Vec3d &mirror);
+    ModelInstance*          add_instance(const Geometry::Transformation& trafo);
     void                    delete_instance(size_t idx);
     void                    delete_last_instance();
     void                    clear_instances();
 
-    // Returns the bounding box of the transformed instances.
-    // This bounding box is approximate and not snug.
-    // This bounding box is being cached.
-    const BoundingBoxf3& bounding_box() const;
-    void invalidate_bounding_box() { m_bounding_box_valid = false; m_raw_bounding_box_valid = false; m_raw_mesh_bounding_box_valid = false; }
+    // Returns the bounding box of the transformed instances. This bounding box is approximate and not snug, it is being cached.
+    const BoundingBoxf3&    bounding_box_approx() const;
+    // Returns an exact bounding box of the transformed instances. The result it is being cached.
+    const BoundingBoxf3&    bounding_box_exact() const;
+    // Return minimum / maximum of a printable object transformed into the world coordinate system.
+    // All instances share the same min / max Z.
+    double                  min_z() const;
+    double                  max_z() const;
+
+    void invalidate_bounding_box() { 
+        m_bounding_box_approx_valid     = false;
+        m_bounding_box_exact_valid      = false;
+        m_min_max_z_valid               = false;
+        m_raw_bounding_box_valid        = false;
+        m_raw_mesh_bounding_box_valid   = false;
+    }
 
     // A mesh containing all transformed instances of this object.
     TriangleMesh mesh() const;
@@ -456,15 +467,22 @@ public:
     void invalidate_cut();
     // delete volumes which are marked as connector for this object
     void delete_connectors();
-    void synchronize_model_after_cut();
-    void apply_cut_attributes(ModelObjectCutAttributes attributes);
     void clone_for_cut(ModelObject **obj);
-    void process_connector_cut(ModelVolume* volume, ModelObjectCutAttributes attributes, ModelObject* upper, ModelObject* lower,
-                               std::vector<ModelObject*>& dowels, Vec3d& local_dowels_displace);
+
+private:
+    void process_connector_cut(ModelVolume* volume, const Transform3d& instance_matrix, const Transform3d& cut_matrix,
+                               ModelObjectCutAttributes attributes, ModelObject* upper, ModelObject* lower,
+                               std::vector<ModelObject*>& dowels);
     void process_modifier_cut(ModelVolume* volume, const Transform3d& instance_matrix, const Transform3d& inverse_cut_matrix,
                               ModelObjectCutAttributes attributes, ModelObject* upper, ModelObject* lower);
+    void process_volume_cut(ModelVolume* volume, const Transform3d& instance_matrix, const Transform3d& cut_matrix,
+                            ModelObjectCutAttributes attributes, TriangleMesh& upper_mesh, TriangleMesh& lower_mesh);
     void process_solid_part_cut(ModelVolume* volume, const Transform3d& instance_matrix, const Transform3d& cut_matrix,
-                                ModelObjectCutAttributes attributes, ModelObject* upper, ModelObject* lower, Vec3d& local_displace);
+                                ModelObjectCutAttributes attributes, ModelObject* upper, ModelObject* lower);
+public:
+    static void reset_instance_transformation(ModelObject* object, size_t src_instance_idx, const Transform3d& cut_matrix,
+                                              bool place_on_cut = false, bool flip = false);
+
     ModelObjectPtrs cut(size_t instance, const Transform3d&cut_matrix, ModelObjectCutAttributes attributes);
     void split(ModelObjectPtrs*new_objects);
     void merge();
@@ -474,8 +492,6 @@ public:
     // Rotation and mirroring is being baked in. In case the instance scaling was non-uniform, it is baked in as well.
     void bake_xy_rotation_into_meshes(size_t instance_idx);
 
-    double get_min_z() const;
-    double get_max_z() const;
     double get_instance_min_z(size_t instance_idx) const;
     double get_instance_max_z(size_t instance_idx) const;
 
@@ -491,20 +507,23 @@ public:
 
     // Detect if object has at least one solid mash
     bool has_solid_mesh() const;
+    // Detect if object has at least one negative volume mash
+    bool has_negative_volume_mesh() const;
+    // Detect if object has at least one sla drain hole
+    bool has_sla_drain_holes() const { return !sla_drain_holes.empty(); }
     bool is_cut() const { return cut_id.id().valid(); }
     bool has_connectors() const;
 
 private:
     friend class Model;
     // This constructor assigns new ID to this ModelObject and its config.
-    explicit ModelObject(Model* model) : m_model(model), printable(true), origin_translation(Vec3d::Zero()),
-        m_bounding_box_valid(false), m_raw_bounding_box_valid(false), m_raw_mesh_bounding_box_valid(false)
+    explicit ModelObject(Model* model) : m_model(model), origin_translation(Vec3d::Zero())
     { 
         assert(this->id().valid());
         assert(this->config.id().valid());
         assert(this->layer_height_profile.id().valid());
     }
-    explicit ModelObject(int) : ObjectBase(-1), config(-1), layer_height_profile(-1), m_model(nullptr), printable(true), origin_translation(Vec3d::Zero()), m_bounding_box_valid(false), m_raw_bounding_box_valid(false), m_raw_mesh_bounding_box_valid(false)
+    explicit ModelObject(int) : ObjectBase(-1), config(-1), layer_height_profile(-1), origin_translation(Vec3d::Zero())
     { 
         assert(this->id().invalid()); 
         assert(this->config.id().invalid());
@@ -582,15 +601,31 @@ private:
     OBJECTBASE_DERIVED_COPY_MOVE_CLONE(ModelObject)
 
     // Parent object, owning this ModelObject. Set to nullptr here, so the macros above will have it initialized.
-    Model                *m_model = nullptr;
+    Model                *m_model { nullptr };
 
     // Bounding box, cached.
-    mutable BoundingBoxf3 m_bounding_box;
-    mutable bool          m_bounding_box_valid;
+    mutable BoundingBoxf3 m_bounding_box_approx;
+    mutable bool          m_bounding_box_approx_valid { false };
+    mutable BoundingBoxf3 m_bounding_box_exact;
+    mutable bool          m_bounding_box_exact_valid { false };
+    mutable bool          m_min_max_z_valid { false };
     mutable BoundingBoxf3 m_raw_bounding_box;
-    mutable bool          m_raw_bounding_box_valid;
+    mutable bool          m_raw_bounding_box_valid { false };
     mutable BoundingBoxf3 m_raw_mesh_bounding_box;
-    mutable bool          m_raw_mesh_bounding_box_valid;
+    mutable bool          m_raw_mesh_bounding_box_valid { false };
+
+    // Only use this method if now the source and dest ModelObjects are equal, for example they were synchronized by Print::apply().
+    void copy_transformation_caches(const ModelObject &src) {
+        m_bounding_box_approx             = src.m_bounding_box_approx;
+        m_bounding_box_approx_valid       = src.m_bounding_box_approx_valid;
+        m_bounding_box_exact              = src.m_bounding_box_exact;
+        m_bounding_box_exact_valid        = src.m_bounding_box_exact_valid;
+        m_min_max_z_valid                 = src.m_min_max_z_valid;
+        m_raw_bounding_box                = src.m_raw_bounding_box;
+        m_raw_bounding_box_valid          = src.m_raw_bounding_box_valid;
+        m_raw_mesh_bounding_box           = src.m_raw_mesh_bounding_box;
+        m_raw_mesh_bounding_box_valid     = src.m_raw_mesh_bounding_box_valid;
+    }
 
     // Called by Print::apply() to set the model pointer after making a copy.
     friend class Print;
@@ -602,8 +637,7 @@ private:
 	friend class UndoRedo::StackImpl;
 	// Used for deserialization -> Don't allocate any IDs for the ModelObject or its config.
 	ModelObject() : 
-        ObjectBase(-1), config(-1), layer_height_profile(-1),
-        m_model(nullptr), m_bounding_box_valid(false), m_raw_bounding_box_valid(false), m_raw_mesh_bounding_box_valid(false) {
+        ObjectBase(-1), config(-1), layer_height_profile(-1) {
 		assert(this->id().invalid()); 
         assert(this->config.id().invalid());
         assert(this->layer_height_profile.id().invalid());
@@ -614,12 +648,17 @@ private:
         Internal::StaticSerializationWrapper<LayerHeightProfile> layer_heigth_profile_wrapper(layer_height_profile);
         ar(name, input_file, instances, volumes, config_wrapper, layer_config_ranges, layer_heigth_profile_wrapper, 
             sla_support_points, sla_points_status, sla_drain_holes, printable, origin_translation,
-            m_bounding_box, m_bounding_box_valid, m_raw_bounding_box, m_raw_bounding_box_valid, m_raw_mesh_bounding_box, m_raw_mesh_bounding_box_valid,
+            m_bounding_box_approx, m_bounding_box_approx_valid, 
+            m_bounding_box_exact, m_bounding_box_exact_valid, m_min_max_z_valid,
+            m_raw_bounding_box, m_raw_bounding_box_valid, m_raw_mesh_bounding_box, m_raw_mesh_bounding_box_valid,
             cut_connectors, cut_id);
 	}
 
     // Called by Print::validate() from the UI thread.
     unsigned int update_instances_print_volume_state(const BuildVolume &build_volume);
+
+    // Called by min_z(), max_z()
+    void update_min_max_z();
 };
 
 enum class EnforcerBlockerType : int8_t {
@@ -804,6 +843,7 @@ public:
 	bool                is_support_blocker()    const { return m_type == ModelVolumeType::SUPPORT_BLOCKER; }
 	bool                is_support_modifier()   const { return m_type == ModelVolumeType::SUPPORT_BLOCKER || m_type == ModelVolumeType::SUPPORT_ENFORCER; }
     bool                is_text()               const { return text_configuration.has_value(); }
+    bool                is_the_only_one_part() const; // behave like an object
     t_model_material_id material_id() const { return m_material_id; }
     void                reset_extra_facets();
     void                apply_tolerance();
@@ -849,26 +889,16 @@ public:
 
     const Geometry::Transformation& get_transformation() const { return m_transformation; }
     void set_transformation(const Geometry::Transformation& transformation) { m_transformation = transformation; }
-#if ENABLE_WORLD_COORDINATE
     void set_transformation(const Transform3d& trafo) { m_transformation.set_matrix(trafo); }
 
     Vec3d get_offset() const { return m_transformation.get_offset(); }
-#else
-    void set_transformation(const Transform3d &trafo) { m_transformation.set_from_transform(trafo); }
-
-    const Vec3d& get_offset() const { return m_transformation.get_offset(); }
-#endif // ENABLE_WORLD_COORDINATE
 
     double get_offset(Axis axis) const { return m_transformation.get_offset(axis); }
 
     void set_offset(const Vec3d& offset) { m_transformation.set_offset(offset); }
     void set_offset(Axis axis, double offset) { m_transformation.set_offset(axis, offset); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_rotation() const { return m_transformation.get_rotation(); }
-#else
-    const Vec3d& get_rotation() const { return m_transformation.get_rotation(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_rotation(Axis axis) const { return m_transformation.get_rotation(axis); }
 
     void set_rotation(const Vec3d& rotation) { m_transformation.set_rotation(rotation); }
@@ -880,11 +910,7 @@ public:
     void set_scaling_factor(const Vec3d& scaling_factor) { m_transformation.set_scaling_factor(scaling_factor); }
     void set_scaling_factor(Axis axis, double scaling_factor) { m_transformation.set_scaling_factor(axis, scaling_factor); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_mirror() const { return m_transformation.get_mirror(); }
-#else
-    const Vec3d& get_mirror() const { return m_transformation.get_mirror(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_mirror(Axis axis) const { return m_transformation.get_mirror(axis); }
     bool is_left_handed() const { return m_transformation.is_left_handed(); }
 
@@ -893,12 +919,8 @@ public:
     void convert_from_imperial_units();
     void convert_from_meters();
 
-#if ENABLE_WORLD_COORDINATE
     const Transform3d& get_matrix() const { return m_transformation.get_matrix(); }
     Transform3d get_matrix_no_offset() const { return m_transformation.get_matrix_no_offset(); }
-#else
-    const Transform3d& get_matrix(bool dont_translate = false, bool dont_rotate = false, bool dont_scale = false, bool dont_mirror = false) const { return m_transformation.get_matrix(dont_translate, dont_rotate, dont_scale, dont_mirror); }
-#endif // ENABLE_WORLD_COORDINATE
 
 	void set_new_unique_id() { 
         ObjectBase::set_new_unique_id();
@@ -1103,71 +1125,49 @@ public:
     // flag showing the position of this instance with respect to the print volume (set by Print::validate() using ModelObject::check_instances_print_volume_state())
     ModelInstanceEPrintVolumeState print_volume_state;
     // Whether or not this instance is printable
-    bool printable;
+    bool printable { true };
 
     ModelObject* get_object() const { return this->object; }
 
     const Geometry::Transformation& get_transformation() const { return m_transformation; }
     void set_transformation(const Geometry::Transformation& transformation) { m_transformation = transformation; }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_offset() const { return m_transformation.get_offset(); }
-#else
-    const Vec3d& get_offset() const { return m_transformation.get_offset(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_offset(Axis axis) const { return m_transformation.get_offset(axis); }
     
     void set_offset(const Vec3d& offset) { m_transformation.set_offset(offset); }
     void set_offset(Axis axis, double offset) { m_transformation.set_offset(axis, offset); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_rotation() const { return m_transformation.get_rotation(); }
-#else
-    const Vec3d& get_rotation() const { return m_transformation.get_rotation(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_rotation(Axis axis) const { return m_transformation.get_rotation(axis); }
 
     void set_rotation(const Vec3d& rotation) { m_transformation.set_rotation(rotation); }
     void set_rotation(Axis axis, double rotation) { m_transformation.set_rotation(axis, rotation); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_scaling_factor() const { return m_transformation.get_scaling_factor(); }
-#else
-    const Vec3d& get_scaling_factor() const { return m_transformation.get_scaling_factor(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_scaling_factor(Axis axis) const { return m_transformation.get_scaling_factor(axis); }
 
     void set_scaling_factor(const Vec3d& scaling_factor) { m_transformation.set_scaling_factor(scaling_factor); }
     void set_scaling_factor(Axis axis, double scaling_factor) { m_transformation.set_scaling_factor(axis, scaling_factor); }
 
-#if ENABLE_WORLD_COORDINATE
     Vec3d get_mirror() const { return m_transformation.get_mirror(); }
-#else
-    const Vec3d& get_mirror() const { return m_transformation.get_mirror(); }
-#endif // ENABLE_WORLD_COORDINATE
     double get_mirror(Axis axis) const { return m_transformation.get_mirror(axis); }
-	bool is_left_handed() const { return m_transformation.is_left_handed(); }
+    bool is_left_handed() const { return m_transformation.is_left_handed(); }
     
     void set_mirror(const Vec3d& mirror) { m_transformation.set_mirror(mirror); }
     void set_mirror(Axis axis, double mirror) { m_transformation.set_mirror(axis, mirror); }
 
     // To be called on an external mesh
     void transform_mesh(TriangleMesh* mesh, bool dont_translate = false) const;
-    // Calculate a bounding box of a transformed mesh. To be called on an external mesh.
-    BoundingBoxf3 transform_mesh_bounding_box(const TriangleMesh& mesh, bool dont_translate = false) const;
-    // Transform an external bounding box.
+    // Transform an external bounding box, thus the resulting bounding box is no more snug.
     BoundingBoxf3 transform_bounding_box(const BoundingBoxf3 &bbox, bool dont_translate = false) const;
     // Transform an external vector.
     Vec3d transform_vector(const Vec3d& v, bool dont_translate = false) const;
     // To be called on an external polygon. It does not translate the polygon, only rotates and scales.
     void transform_polygon(Polygon* polygon) const;
 
-#if ENABLE_WORLD_COORDINATE
     const Transform3d& get_matrix() const { return m_transformation.get_matrix(); }
     Transform3d get_matrix_no_offset() const { return m_transformation.get_matrix_no_offset(); }
-#else
-    const Transform3d& get_matrix(bool dont_translate = false, bool dont_rotate = false, bool dont_scale = false, bool dont_mirror = false) const { return m_transformation.get_matrix(dont_translate, dont_rotate, dont_scale, dont_mirror); }
-#endif // ENABLE_WORLD_COORDINATE
 
     bool is_printable() const { return object->printable && printable && (print_volume_state == ModelInstancePVS_Inside); }
 
@@ -1175,14 +1175,7 @@ public:
     arrangement::ArrangePolygon get_arrange_polygon() const;
     
     // Apply the arrange result on the ModelInstance
-    void apply_arrange_result(const Vec2d& offs, double rotation)
-    {
-        // write the transformation data into the model instance
-        set_rotation(Z, rotation);
-        set_offset(X, unscale<double>(offs(X)));
-        set_offset(Y, unscale<double>(offs(Y)));
-        this->object->invalidate_bounding_box();
-    }
+    void apply_arrange_result(const Vec2d& offs, double rotation);
 
 protected:
     friend class Print;
@@ -1198,7 +1191,7 @@ private:
     ModelObject* object;
 
     // Constructor, which assigns a new unique ID.
-    explicit ModelInstance(ModelObject* object) : print_volume_state(ModelInstancePVS_Inside), printable(true), object(object) { assert(this->id().valid()); }
+    explicit ModelInstance(ModelObject* object) : print_volume_state(ModelInstancePVS_Inside), object(object) { assert(this->id().valid()); }
     // Constructor, which assigns a new unique ID.
     explicit ModelInstance(ModelObject *object, const ModelInstance &other) :
         m_transformation(other.m_transformation), print_volume_state(ModelInstancePVS_Inside), printable(other.printable), object(object) { assert(this->id().valid() && this->id() != other.id()); }
@@ -1313,8 +1306,12 @@ public:
     void          delete_material(t_model_material_id material_id);
     void          clear_materials();
     bool          add_default_instances();
-    // Returns approximate axis aligned bounding box of this model
-    BoundingBoxf3 bounding_box() const;
+    // Returns approximate axis aligned bounding box of this model.
+    BoundingBoxf3 bounding_box_approx() const;
+    // Returns exact axis aligned bounding box of this model.
+    BoundingBoxf3 bounding_box_exact() const;
+    // Return maximum height of all printable objects.
+    double        max_z() const;
     // Set the print_volume_state of PrintObject::instances, 
     // return total number of printable objects.
     unsigned int  update_print_volume_state(const BuildVolume &build_volume);
@@ -1400,8 +1397,6 @@ bool model_has_parameter_modifiers_in_objects(const Model& model);
 // If the model has multi-part objects, then it is currently not supported by the SLA mode.
 // Either the model cannot be loaded, or a SLA printer has to be activated.
 bool model_has_multi_part_objects(const Model &model);
-// If the model has objects with cut connectrs, then it is currently not supported by the SLA mode.
-bool model_has_connectors(const Model& model);
 // If the model has advanced features, then it cannot be processed in simple mode.
 bool model_has_advanced_features(const Model &model);
 

@@ -153,6 +153,25 @@ inline void polylines_append(Polylines &dst, Polylines &&src)
     }
 }
 
+// Merge polylines at their respective end points.
+// dst_first: the merge point is at dst.begin() or dst.end()?
+// src_first: the merge point is at src.begin() or src.end()?
+// The orientation of the resulting polyline is unknown, the output polyline may start
+// either with src piece or dst piece.
+template<typename PointsType>
+inline void polylines_merge(PointsType &dst, bool dst_first, PointsType &&src, bool src_first)
+{
+    if (dst_first) {
+        if (src_first)
+            std::reverse(dst.begin(), dst.end());
+        else
+            std::swap(dst, src);
+    } else if (! src_first)
+        std::reverse(src.begin(), src.end());
+    // Merge src into dst.
+    append(dst, std::move(src));
+}
+
 const Point& leftmost_point(const Polylines &polylines);
 
 bool remove_degenerate(Polylines &polylines);
@@ -166,7 +185,9 @@ struct ThickPolyline {
 
     const Point& first_point()  const { return this->points.front(); }
     const Point& last_point()   const { return this->points.back(); }
+    size_t       size()         const { return this->points.size(); }
     bool         is_valid()     const { return this->points.size() >= 2; }
+    bool         empty()        const { return this->points.empty(); }
     double       length()       const { return Slic3r::length(this->points); }
 
     void         clear() { this->points.clear(); this->width.clear(); }
@@ -179,7 +200,15 @@ struct ThickPolyline {
 
     void clip_end(double distance);
 
+    // Make this closed ThickPolyline starting in the specified index.
+    // Be aware that this method can be applicable just for closed ThickPolyline.
+    // On open ThickPolyline make no effect.
+    void start_at_index(int index);
+
     Points                  points;
+    // vector of startpoint width and endpoint width of each line segment. The size should be always (points.size()-1) * 2
+    // e.g. let four be points a,b,c,d. that are three lines ab, bc, cd. for each line, there should be start width, so the width vector is:
+    // w(a), w(b), w(b), w(c), w(c), w(d)
     std::vector<coordf_t>   width;
     std::pair<bool,bool>    endpoints { false, false };
 };

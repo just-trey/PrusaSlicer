@@ -91,10 +91,11 @@ public:
     bool begin(const wxString& name, bool* close, int flags = 0);
     void end();
 
-    bool button(const wxString &label);
-	bool button(const wxString& label, float width, float height);
+    bool button(const wxString &label, const wxString& tooltip = {});
+    bool button(const wxString& label, float width, float height);
     bool button(const wxString& label, const ImVec2 &size, bool enable); // default size = ImVec2(0.f, 0.f)
     bool radio_button(const wxString &label, bool active);
+    void draw_icon(ImGuiWindow& window, const ImVec2& pos, float size, wchar_t icon_id);
     bool draw_radio_button(const std::string& name, float size, bool active, std::function<void(ImGuiWindow& window, const ImVec2& pos, float size)> draw_callback);
     bool checkbox(const wxString &label, bool &value);
     static void text(const char *label);
@@ -119,7 +120,8 @@ public:
     bool image_button(const wchar_t icon, const wxString& tooltip = L"");
 
     // Use selection = -1 to not mark any option as selected
-    bool combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0);
+    bool combo(const std::string& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0, float label_width = 0.0f, float item_width = 0.0f);
+    bool combo(const wxString& label, const std::vector<std::string>& options, int& selection, ImGuiComboFlags flags = 0, float label_width = 0.0f, float item_width = 0.0f);
     bool undo_redo_list(const ImVec2& size, const bool is_undo, bool (*items_getter)(const bool, int, const char**), int& hovered, int& selected, int& mouse_wheel);
     void search_list(const ImVec2& size, bool (*items_getter)(int, const char** label, const char** tooltip), char* search_str,
                      Search::OptionViewParameters& view_params, int& selected, bool& edited, int& mouse_wheel, bool is_localized);
@@ -145,6 +147,12 @@ public:
     bool slider_optional_float(const char* label, std::optional<float> &v, float v_min, float v_max, const char* format = "%.3f", float power = 1.0f, bool clamp = true, const wxString& tooltip = {}, bool show_edit_btn = true, float def_val = .0f);
     // Extended function ImGuiWrapper::slider_float to work with std::optional<int>, when value == def_val than optional release its value
     bool slider_optional_int(const char* label, std::optional<int> &v, int v_min, int v_max, const char* format = "%.3f", float power = 1.0f, bool clamp = true, const wxString& tooltip = {}, bool show_edit_btn = true, int def_val = 0);
+
+    /// <summary>
+    /// Use ImGui internals to unactivate (lose focus) in input.
+    /// When input is activ it can't change value by application.
+    /// </summary>
+    static void left_inputs();
 
     /// <summary>
     /// Truncate text by ImGui draw function to specific width
@@ -192,6 +200,20 @@ public:
                      ImDrawList *   draw_list = ImGui::GetOverlayDrawList(),
                      ImU32 color     = ImGui::GetColorU32(COL_ORANGE_LIGHT),
                      float thickness = 3.f);
+
+    /// <summary>
+    /// Draw symbol of cross hair
+    /// </summary>
+    /// <param name="position">Center of cross hair</param>
+    /// <param name="radius">Circle radius</param>
+    /// <param name="color">Color of symbol</param>
+    /// <param name="num_segments">Precission of circle</param>
+    /// <param name="thickness">Thickness of Line in symbol</param>
+    static void draw_cross_hair(const ImVec2 &position,
+                                float         radius       = 16.f,
+                                ImU32         color        = ImGui::GetColorU32(ImVec4(1.f, 1.f, 1.f, .75f)),
+                                int           num_segments = 0,
+                                float         thickness    = 4.f);
 
     /// <summary>
     /// Check that font ranges contain all chars in string

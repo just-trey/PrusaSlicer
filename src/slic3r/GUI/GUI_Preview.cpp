@@ -65,6 +65,7 @@ bool View3D::init(wxWindow* parent, Bed3D& bed, Model* model, DynamicPrintConfig
     m_canvas->allow_multisample(OpenGLManager::can_multisample());
 
     m_canvas->enable_picking(true);
+    m_canvas->get_selection().set_mode(Selection::Instance);
     m_canvas->enable_moving(true);
     // XXX: more config from 3D.pm
     m_canvas->set_model(model);
@@ -178,6 +179,12 @@ Preview::Preview(
 {
     if (init(parent, bed, model))
         load_print();
+}
+
+void Preview::set_layers_slider_values_range(int bottom, int top)
+{
+    m_layers_slider->SetHigherValue(std::min(top, m_layers_slider->GetMaxValue()));
+    m_layers_slider->SetLowerValue(std::max(bottom, m_layers_slider->GetMinValue()));
 }
 
 bool Preview::init(wxWindow* parent, Bed3D& bed, Model* model)
@@ -537,7 +544,7 @@ void Preview::update_layers_slider(const std::vector<double>& layers_z, bool kee
 
     // Suggest the auto color change, if model looks like sign
     if (!color_change_already_exists &&
-        wxGetApp().app_config->get("allow_auto_color_change") == "1" && 
+        wxGetApp().app_config->get_bool("allow_auto_color_change") &&
         m_layers_slider->IsNewPrint())
     {
         const Print& print = wxGetApp().plater()->fff_print();

@@ -31,7 +31,7 @@ inline coordf_t min_layer_height_from_nozzle(const PrintConfig &print_config, in
     return (min_layer_height == 0.) ? MIN_LAYER_HEIGHT_DEFAULT : std::max(MIN_LAYER_HEIGHT, min_layer_height);
 }
 
-// Maximum layer height for the variable layer height algorithm, 3/4 of a nozzle dimaeter by default,
+// Maximum layer height for the variable layer height algorithm, 3/4 of a nozzle diameter by default,
 // it should not be smaller than the minimum layer height.
 inline coordf_t max_layer_height_from_nozzle(const PrintConfig &print_config, int idx_nozzle)
 {
@@ -48,7 +48,7 @@ coordf_t Slicing::min_layer_height_from_nozzle(const DynamicPrintConfig &print_c
     return (min_layer_height == 0.) ? MIN_LAYER_HEIGHT_DEFAULT : std::max(MIN_LAYER_HEIGHT, min_layer_height);
 }
 
-// Maximum layer height for the variable layer height algorithm, 3/4 of a nozzle dimaeter by default,
+// Maximum layer height for the variable layer height algorithm, 3/4 of a nozzle diameter by default,
 // it should not be smaller than the minimum layer height.
 coordf_t Slicing::max_layer_height_from_nozzle(const DynamicPrintConfig &print_config, int idx_nozzle)
 {
@@ -186,7 +186,7 @@ std::vector<coordf_t> layer_height_profile_from_ranges(
     auto last_z = [&layer_height_profile]() {
         return layer_height_profile.empty() ? 0. : *(layer_height_profile.end() - 2);
     };
-    auto lh_append = [&layer_height_profile, last_z](coordf_t z, coordf_t layer_height) {
+    auto lh_append = [&layer_height_profile](coordf_t z, coordf_t layer_height) {
         if (! layer_height_profile.empty()) {
             bool last_z_matches = is_approx(*(layer_height_profile.end() - 2), z);
             bool last_h_matches = is_approx(layer_height_profile.back(), layer_height);

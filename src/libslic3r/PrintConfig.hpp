@@ -19,6 +19,7 @@
 #include "libslic3r.h"
 #include "Config.hpp"
 #include "SLA/SupportTreeStrategies.hpp"
+#include "libslic3r/Arrange.hpp"
 
 #include <boost/preprocessor/facilities/empty.hpp>
 #include <boost/preprocessor/punctuation/comma_if.hpp>
@@ -31,7 +32,7 @@
 namespace Slic3r {
 
 enum GCodeFlavor : unsigned char {
-    gcfRepRapSprinter, gcfRepRapFirmware, gcfRepetier, gcfTeacup, gcfMakerWare, gcfMarlinLegacy, gcfMarlinFirmware, gcfSailfish, gcfMach3, gcfMachinekit,
+    gcfRepRapSprinter, gcfRepRapFirmware, gcfRepetier, gcfTeacup, gcfMakerWare, gcfMarlinLegacy, gcfMarlinFirmware, gcfKlipper, gcfSailfish, gcfMach3, gcfMachinekit,
     gcfSmoothie, gcfNoExtrusion,
 };
 
@@ -43,7 +44,7 @@ enum class MachineLimitsUsage {
 };
 
 enum PrintHostType {
-    htPrusaLink, htPrusaConnect, htOctoPrint, htDuet, htFlashAir, htAstroBox, htRepetier, htMKS
+    htPrusaLink, htPrusaConnect, htOctoPrint, htMoonraker, htDuet, htFlashAir, htAstroBox, htRepetier, htMKS
 };
 
 enum AuthorizationType {
@@ -60,6 +61,7 @@ enum InfillPattern : int {
     ipRectilinear, ipMonotonic, ipMonotonicLines, ipAlignedRectilinear, ipGrid, ipTriangles, ipStars, ipCubic, ipLine, ipConcentric, ipHoneycomb, ip3DHoneycomb,
     ipGyroid, ipHilbertCurve, ipArchimedeanChords, ipOctagramSpiral, ipAdaptiveCubic, ipSupportCubic, ipSupportBase,
     ipLightning,
+    ipEnsuring,
     ipCount,
 };
 
@@ -161,6 +163,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(DraftShield)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(GCodeThumbnailsFormat)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(ForwardCompatibilitySubstitutionRule)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(PerimeterGeneratorType)
+
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -487,13 +490,12 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               brim_separation))
     ((ConfigOptionEnum<BrimType>,      brim_type))
     ((ConfigOptionFloat,               brim_width))
-    ((ConfigOptionBool,                clip_multipart_objects))
     ((ConfigOptionBool,                dont_support_bridges))
     ((ConfigOptionFloat,               elefant_foot_compensation))
     ((ConfigOptionFloatOrPercent,      extrusion_width))
     ((ConfigOptionFloat,               first_layer_acceleration_over_raft))
     ((ConfigOptionFloatOrPercent,      first_layer_speed_over_raft))
-    ((ConfigOptionBool,                infill_only_where_needed))
+    // ((ConfigOptionBool,                infill_only_where_needed))
     // Force the generation of solid shells between adjacent materials/volumes.
     ((ConfigOptionBool,                interface_shells))
     ((ConfigOptionFloat,               layer_height))
@@ -552,7 +554,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               support_tree_angle_slow))
     ((ConfigOptionFloat,               support_tree_branch_diameter))
     ((ConfigOptionFloat,               support_tree_branch_diameter_angle))
+    ((ConfigOptionFloat,               support_tree_branch_diameter_double_wall))
     ((ConfigOptionPercent,             support_tree_top_rate))
+    ((ConfigOptionFloat,               support_tree_branch_distance))
     ((ConfigOptionFloat,               support_tree_tip_diameter))
     // The rest
     ((ConfigOptionBool,                thick_bridges))
@@ -568,14 +572,15 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                bottom_solid_min_thickness))
     ((ConfigOptionFloat,                bridge_flow_ratio))
     ((ConfigOptionFloat,                bridge_speed))
-    ((ConfigOptionBool,                 ensure_vertical_shell_thickness))
     ((ConfigOptionEnum<InfillPattern>,  top_fill_pattern))
     ((ConfigOptionEnum<InfillPattern>,  bottom_fill_pattern))
     ((ConfigOptionFloatOrPercent,       external_perimeter_extrusion_width))
     ((ConfigOptionFloatOrPercent,       external_perimeter_speed))
     ((ConfigOptionBool,                 enable_dynamic_overhang_speeds))
-    ((ConfigOptionPercents,             overhang_overlap_levels))
-    ((ConfigOptionFloatsOrPercents,     dynamic_overhang_speeds))
+    ((ConfigOptionFloatOrPercent,       overhang_speed_0))
+    ((ConfigOptionFloatOrPercent,       overhang_speed_1))
+    ((ConfigOptionFloatOrPercent,       overhang_speed_2))
+    ((ConfigOptionFloatOrPercent,       overhang_speed_3))
     ((ConfigOptionBool,                 external_perimeters_first))
     ((ConfigOptionBool,                 extra_perimeters))
     ((ConfigOptionBool,                 extra_perimeters_on_overhangs))
@@ -657,6 +662,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 PRINT_CONFIG_CLASS_DEFINE(
     GCodeConfig,
 
+    ((ConfigOptionBool,                autoemit_temperature_commands))
     ((ConfigOptionString,              before_layer_gcode))
     ((ConfigOptionString,              between_objects_gcode))
     ((ConfigOptionFloats,              deretract_speed))
@@ -748,6 +754,11 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionInts,               bed_temperature))
     ((ConfigOptionFloat,              bridge_acceleration))
     ((ConfigOptionInts,               bridge_fan_speed))
+    ((ConfigOptionBools,              enable_dynamic_fan_speeds))
+    ((ConfigOptionInts,               overhang_fan_speed_0))
+    ((ConfigOptionInts,               overhang_fan_speed_1))
+    ((ConfigOptionInts,               overhang_fan_speed_2))
+    ((ConfigOptionInts,               overhang_fan_speed_3))
     ((ConfigOptionBool,               complete_objects))
     ((ConfigOptionFloats,             colorprint_heights))
     ((ConfigOptionBools,              cooling))
@@ -755,6 +766,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionInts,               disable_fan_first_layers))
     ((ConfigOptionEnum<DraftShield>,  draft_shield))
     ((ConfigOptionFloat,              duplicate_distance))
+    ((ConfigOptionFloat,              external_perimeter_acceleration))
     ((ConfigOptionFloat,              extruder_clearance_height))
     ((ConfigOptionFloat,              extruder_clearance_radius))
     ((ConfigOptionStrings,            extruder_colour))
@@ -797,12 +809,15 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionInt,                skirt_height))
     ((ConfigOptionInt,                skirts))
     ((ConfigOptionInts,               slowdown_below_layer_time))
+    ((ConfigOptionFloat,              solid_infill_acceleration))
     ((ConfigOptionBool,               spiral_vase))
     ((ConfigOptionInt,                standby_temperature_delta))
     ((ConfigOptionInts,               temperature))
     ((ConfigOptionInt,                threads))
     ((ConfigOptionPoints,             thumbnails))
     ((ConfigOptionEnum<GCodeThumbnailsFormat>,  thumbnails_format))
+    ((ConfigOptionFloat,              top_solid_infill_acceleration))
+    ((ConfigOptionFloat,              travel_acceleration))
     ((ConfigOptionBools,              wipe))
     ((ConfigOptionBool,               wipe_tower))
     ((ConfigOptionFloat,              wipe_tower_x))
@@ -811,7 +826,10 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionFloat,              wipe_tower_per_color_wipe))
     ((ConfigOptionFloat,              wipe_tower_rotation_angle))
     ((ConfigOptionFloat,              wipe_tower_brim_width))
+    ((ConfigOptionFloat,              wipe_tower_cone_angle))
+    ((ConfigOptionPercent,            wipe_tower_extra_spacing))
     ((ConfigOptionFloat,              wipe_tower_bridging))
+    ((ConfigOptionInt,                wipe_tower_extruder))
     ((ConfigOptionFloats,             wiping_volumes_matrix))
     ((ConfigOptionFloats,             wiping_volumes_extruders))
     ((ConfigOptionFloat,              z_offset))
@@ -1175,9 +1193,14 @@ private:
     static PrintAndCLIConfigDef s_def;
 };
 
+bool is_XL_printer(const DynamicPrintConfig &cfg);
+bool is_XL_printer(const PrintConfig &cfg);
+
 Points get_bed_shape(const DynamicPrintConfig &cfg);
 Points get_bed_shape(const PrintConfig &cfg);
 Points get_bed_shape(const SLAPrinterConfig &cfg);
+
+void get_bed_shape(const DynamicPrintConfig &cfg, arrangement::ArrangeBed &out);
 
 std::string get_sla_suptree_prefix(const DynamicPrintConfig &config);
 

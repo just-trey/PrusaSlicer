@@ -87,6 +87,7 @@ src/slic3r/GUI/UpdateDialogs.cpp
 src/slic3r/GUI/WipeTowerDialog.cpp
 src/slic3r/GUI/wxExtensions.cpp
 src/slic3r/Utils/AstroBox.cpp
+src/slic3r/Utils/AppUpdater.cpp
 src/slic3r/Utils/Duet.cpp
 src/slic3r/Utils/FixModelByWin10.cpp
 src/slic3r/Utils/FlashAir.cpp
@@ -97,10 +98,11 @@ src/slic3r/Utils/Process.cpp
 src/slic3r/Utils/Repetier.cpp
 src/slic3r/Config/Snapshot.cpp
 src/libslic3r/GCode.cpp
-src/libslic3r/ExtrusionEntity.cpp
+src/libslic3r/ExtrusionRole.cpp
 src/libslic3r/Flow.cpp
 src/libslic3r/Format/3mf.cpp
 src/libslic3r/Format/AMF.cpp
+src/libslic3r/Format/SLAArchiveReader.cpp
 src/libslic3r/GCode/PostProcessor.cpp
 src/libslic3r/miniz_extension.cpp
 src/libslic3r/Preset.cpp
@@ -109,7 +111,9 @@ src/libslic3r/SLA/Pad.cpp
 src/libslic3r/SLA/Hollowing.cpp
 src/libslic3r/SLAPrint.cpp
 src/libslic3r/SLAPrintSteps.cpp
+src/libslic3r/Utils.cpp
 src/libslic3r/PrintBase.cpp
 src/libslic3r/PrintConfig.cpp
 src/libslic3r/Zipper.cpp
 src/libslic3r/PrintObject.cpp
+src/libslic3r/PrintObjectSlice.cpp

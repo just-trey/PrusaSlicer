@@ -118,12 +118,20 @@ void RotoptimizeJob::finalize(bool canceled, std::exception_ptr &eptr)
         // Correct the z offset of the object which was corrupted be
         // the rotation
         o->ensure_on_bed();
-
-//        m_plater->find_new_position(o->instances);
     }
 
     if (!canceled)
         m_plater->update();
+}
+
+std::string RotoptimizeJob::get_method_name(size_t i)
+{
+    return into_u8(_(Methods[i].name));
+}
+
+std::string RotoptimizeJob::get_method_description(size_t i)
+{
+    return into_u8(_(Methods[i].descr));
 }
 
 }}

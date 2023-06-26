@@ -116,7 +116,7 @@ void PresetForPrinter::update_full_printer_name()
     wxString printer_name   = m_parent->get_printer_name();
     wxString preset_name    = m_presets_list->GetString(m_presets_list->GetSelection());
 
-    m_full_printer_name->SetLabelText(printer_name + " * " + preset_name);
+    m_full_printer_name->SetLabelText(printer_name + from_u8(PhysicalPrinter::separator()) + preset_name);
 }
 
 std::string PresetForPrinter::get_preset_name()
@@ -241,9 +241,7 @@ PhysicalPrinterDialog::PhysicalPrinterDialog(wxWindow* parent, wxString printer_
         m_printer_name->SelectAll();
     }
 
-    const wxSize& bestsize = this->GetBestSize();
-    const wxSize& size = wxSize(bestsize.x, 1.1f * bestsize.y);
-    this->SetSize(size);
+    this->Fit();
     this->Layout();
 
     this->CenterOnScreen();
@@ -464,7 +462,7 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         choice->set_selection();
     }
 
-    update();
+    update(true);
 }
 
 void PhysicalPrinterDialog::update_printhost_buttons()
@@ -532,10 +530,11 @@ void PhysicalPrinterDialog::update(bool printer_change)
 
     update_printhost_buttons();
 
-    const wxSize& bestsize= this->GetBestSize();
-    const wxSize& size = wxSize( bestsize.x, 1.1f * bestsize.y);
-    this->SetSize(size);
+    this->Fit();
     this->Layout();
+#ifdef __WXMSW__
+    this->Refresh();
+#endif
 }
 
 void PhysicalPrinterDialog::update_host_type(bool printer_change)
@@ -548,18 +547,19 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
     } link, connect;
     // allowed models are: all MINI, all MK3 and newer, MK2.5 and MK2.5S  
     auto model_supports_prusalink = [](const std::string& model) {
-        return model.size() >= 3 &&
+        return model.size() >= 2 &&
                 (( boost::starts_with(model, "MK") && model[2] > '2' && model[2] <= '9')
                 || boost::starts_with(model, "MINI")
                 || boost::starts_with(model, "MK2.5")
-                //|| boost::starts_with(model, "MK2.5S")
+                || boost::starts_with(model, "XL")
                 );
     };
     // allowed models are: all MK3/S and MK2.5/S
     auto model_supports_prusaconnect = [](const std::string& model) {
-        return model.size() >= 3 &&
-                (boost::starts_with(model, "MK3")
+        return model.size() >= 2 &&
+                ((boost::starts_with(model, "MK") && model[2] > '2' && model[2] <= '9')
                 || boost::starts_with(model, "MK2.5")
+                || boost::starts_with(model, "XL")
                 );
     };
 
@@ -614,32 +614,33 @@ void PhysicalPrinterDialog::update_host_type(bool printer_change)
 
 
     // Append localized enum_labels
-    assert(ht->m_opt.enum_labels.size() == ht->m_opt.enum_values.size());
-    for (size_t i = 0; i < ht->m_opt.enum_labels.size(); i++) {
-        if (ht->m_opt.enum_values[i] == "prusalink"){
-            link.label = _(ht->m_opt.enum_labels[i]);
+    assert(ht->m_opt.enum_def->labels().size() == ht->m_opt.enum_def->values().size());
+    for (size_t i = 0; i < ht->m_opt.enum_def->labels().size(); ++ i) {
+        wxString label = _(ht->m_opt.enum_def->label(i));
+        if (const std::string &value = ht->m_opt.enum_def->value(i);
+            value == "prusalink") {
+            link.label = label;
             if (!link.supported)
                 continue;
-        }
-        if (ht->m_opt.enum_values[i] == "prusaconnect") {
-            connect.label = _(ht->m_opt.enum_labels[i]);
+        } else if (value == "prusaconnect") {
+            connect.label = label;
             if (!connect.supported)
                 continue;
         }
 
-        types.Add(_(ht->m_opt.enum_labels[i]));
+        types.Add(label);
     }
 
     Choice* choice = dynamic_cast<Choice*>(ht);
     choice->set_values(types);
-    int index_in_choice = (printer_change ? 0 : last_in_conf);
+    int index_in_choice = (printer_change ? std::clamp(last_in_conf - ((int)ht->m_opt.enum_def->values().size() - (int)types.size()), 0, (int)ht->m_opt.enum_def->values().size() - 1) : last_in_conf);
     choice->set_value(index_in_choice);
-    if (link.supported && link.label == _(ht->m_opt.enum_labels[index_in_choice]))
+    if (link.supported && link.label == _(ht->m_opt.enum_def->label(index_in_choice)))
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(htPrusaLink));
-    else if (link.supported && link.label == _(ht->m_opt.enum_labels[index_in_choice]))
+    else if (connect.supported && connect.label == _(ht->m_opt.enum_def->label(index_in_choice)))
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(htPrusaConnect));
     else {
-        int host_type = std::clamp(index_in_choice + ((int)ht->m_opt.enum_values.size() - (int)types.size()), 0, (int)ht->m_opt.enum_values.size() - 1);
+        int host_type = std::clamp(index_in_choice + ((int)ht->m_opt.enum_def->values().size() - (int)types.size()), 0, (int)ht->m_opt.enum_def->values().size() - 1);
         PrintHostType type = static_cast<PrintHostType>(host_type);
         m_config->set_key_value("host_type", new ConfigOptionEnum<PrintHostType>(type));
     }
@@ -653,6 +654,24 @@ wxString PhysicalPrinterDialog::get_printer_name()
 
 void PhysicalPrinterDialog::update_full_printer_names()
 {
+    // check input symbols for usability
+
+    const char* unusable_symbols = "<>[]:/\\|?*\"";
+
+    wxString printer_name = m_printer_name->GetValue();
+    for (size_t i = 0; i < std::strlen(unusable_symbols); i++) {
+        size_t pos = printer_name.find_first_of(unusable_symbols[i]);
+        if (pos != std::string::npos) {
+            wxString str = printer_name.SubString(pos, 1);
+            printer_name.Remove(pos, 1);
+            InfoDialog(this, format_wxstr("%1%: \"%2%\" ", _L("Unexpected character"),  str), 
+                       _L("The following characters are not allowed in the name") + ": " + unusable_symbols).ShowModal();
+            m_printer_name->SetValue(printer_name);
+            m_printer_name->SetInsertionPointEnd();
+            return;
+        }
+    }
+
     for (PresetForPrinter* preset : m_presets)
         preset->update_full_printer_name();
 
@@ -700,11 +719,7 @@ void PhysicalPrinterDialog::on_sys_color_changed()
 void PhysicalPrinterDialog::OnOK(wxEvent& event)
 {
     wxString printer_name = m_printer_name->GetValue();
-    if (printer_name.IsEmpty()) {
-        warning_catcher(this, _L("The supplied name is empty. It can't be saved."));
-        return;
-    }
-    if (printer_name == m_default_name) {
+    if (printer_name.IsEmpty() || printer_name == m_default_name) {
         warning_catcher(this, _L("You have to enter a printer name."));
         return;
     }

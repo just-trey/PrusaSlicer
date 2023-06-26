@@ -1,4 +1,3 @@
-// Include GLGizmoBase.hpp before I18N.hpp as it includes some libigl code, which overrides our localization "L" macro.
 #include "GLGizmoMeasure.hpp"
 #include "slic3r/GUI/GLCanvas3D.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -61,7 +60,7 @@ static std::string surface_feature_type_as_string(Measure::SurfaceFeatureType ty
     switch (type)
     {
     default:
-    case Measure::SurfaceFeatureType::Undef:  { return _u8L("No feature"); }
+    case Measure::SurfaceFeatureType::Undef:  { return ("No feature"); }
     case Measure::SurfaceFeatureType::Point:  { return _u8L("Vertex"); }
     case Measure::SurfaceFeatureType::Edge:   { return _u8L("Edge"); }
     case Measure::SurfaceFeatureType::Circle: { return _u8L("Circle"); }
@@ -455,7 +454,7 @@ bool GLGizmoMeasure::on_mouse(const wxMouseEvent &mouse_event)
     return false;
 }
 
-void GLGizmoMeasure::data_changed()
+void GLGizmoMeasure::data_changed(bool is_serializing)
 {
     m_parent.toggle_sla_auxiliaries_visibility(false, nullptr, -1);
 
@@ -1205,7 +1204,7 @@ void GLGizmoMeasure::render_dimensioning()
             ss_to_ndc_matrix * Geometry::translation_transform(v2ss_3) * q12ss);
         m_dimensioning.triangle.render();
 
-        const bool use_inches = wxGetApp().app_config->get("use_inches") == "1";
+        const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
         const double curr_value = use_inches ? ObjectManipulation::mm_to_in * distance : distance;
         const std::string curr_value_str = format_double(curr_value);
         const std::string units = use_inches ? _u8L("in") : _u8L("mm");
@@ -1538,7 +1537,7 @@ void GLGizmoMeasure::render_dimensioning()
         m_imgui->set_next_window_pos(label_position_ss.x(), viewport[3] - label_position_ss.y(), ImGuiCond_Always, 0.0f, 1.0f);
         m_imgui->set_next_window_bg_alpha(0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        m_imgui->begin(_L("##angle"), ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
+        m_imgui->begin(wxString("##angle"), ImGuiWindowFlags_NoMouseInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove);
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         ImGui::AlignTextToFramePadding();
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -1737,7 +1736,7 @@ void GLGizmoMeasure::render_debug_dialog()
             add_strings_row_to_table(*m_imgui, "m_pt3", ImGuiWrapper::COL_ORANGE_LIGHT, format_vec3(*extra_point), ImGui::GetStyleColorVec4(ImGuiCol_Text));
     };
 
-    m_imgui->begin(_L("Measure tool debug"), ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+    m_imgui->begin("Measure tool debug", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
     if (ImGui::BeginTable("Mode", 2)) {
         std::string txt;
         switch (m_mode)
@@ -1937,19 +1936,19 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
             );
 
         if (m_mode == EMode::FeatureSelection && m_hover_id != -1) {
-            add_strings_row_to_table(*m_imgui, _u8L("Shift"), ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Enable point selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            add_strings_row_to_table(*m_imgui, "Shift", ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Enable point selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
             ++row_count;
         }
 
         if (m_selected_features.first.feature.has_value()) {
-            add_strings_row_to_table(*m_imgui, _u8L("Delete"), ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Restart selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            add_strings_row_to_table(*m_imgui, "Delete", ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Restart selection"), ImGui::GetStyleColorVec4(ImGuiCol_Text));
             ++row_count;
         }
 
         if (m_selected_features.first.feature.has_value() || m_selected_features.second.feature.has_value()) {
           add_row_to_table(
             [this]() {
-                m_imgui->text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, _u8L("Esc"));
+                m_imgui->text_colored(ImGuiWrapper::COL_ORANGE_LIGHT, "Esc");
             },
             [this]() {
                 m_imgui->text_colored(ImGui::GetStyleColorVec4(ImGuiCol_Text), _u8L("Unselect"));
@@ -1973,7 +1972,7 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
         ImGui::EndTable();
     }
 
-    const bool use_inches = wxGetApp().app_config->get("use_inches") == "1";
+    const bool use_inches = wxGetApp().app_config->get_bool("use_inches");
     const std::string units = use_inches ? " " + _u8L("in") : " " + _u8L("mm");
 
     ImGui::Separator();
@@ -1992,6 +1991,13 @@ void GLGizmoMeasure::on_render_input_window(float x, float y, float bottom_limit
                 if (use_inches)
                     radius = ObjectManipulation::mm_to_in * radius;
                 text += " (" + _u8L("Diameter") + ": " + format_double(2.0 * radius) + units + ")";
+            }
+            else if (item.feature.has_value() && item.feature->get_type() == Measure::SurfaceFeatureType::Edge) {
+                auto [start, end] = item.feature->get_edge();
+                double length = (end - start).norm();
+                if (use_inches)
+                    length = ObjectManipulation::mm_to_in * length;
+                text += " (" + _u8L("Length") + ": " + format_double(length) + units + ")";
             }
             return text;
         };

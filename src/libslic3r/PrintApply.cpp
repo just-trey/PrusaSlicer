@@ -791,13 +791,8 @@ void update_volume_bboxes(
                     if (it != volumes_old.end() && it->volume_id == model_volume->id())
                         layer_range.volumes.emplace_back(*it);
                 } else
-#if ENABLE_WORLD_COORDINATE
                     layer_range.volumes.push_back({ model_volume->id(),
                         transformed_its_bbox2d(model_volume->mesh().its, trafo_for_bbox(object_trafo, model_volume->get_matrix()), offset) });
-#else
-                    layer_range.volumes.push_back({ model_volume->id(),
-                        transformed_its_bbox2d(model_volume->mesh().its, trafo_for_bbox(object_trafo, model_volume->get_matrix(false)), offset) });
-#endif // ENABLE_WORLD_COORDINATE
             }
     } else {
         std::vector<std::vector<PrintObjectRegions::VolumeExtents>> volumes_old;
@@ -829,11 +824,7 @@ void update_volume_bboxes(
                             layer_range.volumes.emplace_back(*it);
                     }
                 } else {
-#if ENABLE_WORLD_COORDINATE
                     transformed_its_bboxes_in_z_ranges(model_volume->mesh().its, trafo_for_bbox(object_trafo, model_volume->get_matrix()), ranges, bboxes, offset);
-#else
-                    transformed_its_bboxes_in_z_ranges(model_volume->mesh().its, trafo_for_bbox(object_trafo, model_volume->get_matrix(false)), ranges, bboxes, offset);
-#endif // ENABLE_WORLD_COORDINATE
                     for (PrintObjectRegions::LayerRangeRegions &layer_range : layer_ranges)
                         if (auto &bbox = bboxes[&layer_range - layer_ranges.data()]; bbox.second)
                             layer_range.volumes.push_back({ model_volume->id(), bbox.first });
@@ -1250,7 +1241,6 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 	        						           l->get_transformation().get_matrix().isApprox(r->get_transformation().get_matrix()); })) {
 	        	// If some of the instances changed, the bounding box of the updated ModelObject is likely no more valid.
 	        	// This is safe as the ModelObject's bounding box is only accessed from this function, which is called from the main thread only.
-	 			model_object.invalidate_bounding_box();
 	        	// Synchronize the content of instances.
 	        	auto new_instance = model_object_new.instances.begin();
 				for (auto old_instance = model_object.instances.begin(); old_instance != model_object.instances.end(); ++ old_instance, ++ new_instance) {
@@ -1259,6 +1249,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                     (*old_instance)->printable 		    = (*new_instance)->printable;
   				}
 	        }
+            // Source / dest object share the same bounding boxes, just copy them.
+            model_object.copy_transformation_caches(model_object_new);
         }
     }
 

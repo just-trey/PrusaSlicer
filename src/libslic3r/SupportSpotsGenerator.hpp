@@ -42,8 +42,9 @@ struct Params
     BrimType brim_type;
     const float brim_width;
 
-    const std::pair<float,float> malformation_distance_factors = std::pair<float, float> { 0.5, 1.1 };
+    const std::pair<float,float> malformation_distance_factors = std::pair<float, float> { 0.2, 1.1 };
     const float max_curled_height_factor = 10.0f;
+    const float curling_tolerance_limit = 0.1f;
 
     const float min_distance_between_support_points = 3.0f; //mm
     const float support_points_interface_radius = 1.5f; // mm
@@ -144,6 +145,7 @@ struct PartialObject
 
 using PartialObjects = std::vector<PartialObject>;
 
+// Both support points and partial objects are sorted from the lowest z to the highest
 std::tuple<SupportPoints, PartialObjects> full_search(const PrintObject *po, const PrintTryCancel& cancel_func, const Params &params);
 
 void estimate_supports_malformations(std::vector<SupportLayer *> &layers, float supports_flow_width, const Params &params);

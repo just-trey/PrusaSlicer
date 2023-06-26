@@ -173,8 +173,8 @@ wxPoint OG_CustomCtrl::get_pos(const Line& line, Field* field_in/* = nullptr*/)
                 ConfigOptionDef option = opt.opt;
                 // add label if any
                 if (is_multioption_line && !option.label.empty()) {
-                    //!            To correct translation by context have to use wxGETTEXT_IN_CONTEXT macro from wxWidget 3.1.1
-                    label = (option.label == L_CONTEXT("Top", "Layers") || option.label == L_CONTEXT("Bottom", "Layers")) ?
+                    // those two parameter names require localization with context
+                    label = (option.label == "Top" || option.label == "Bottom") ?
                         _CTX(option.label, "Layers") : _(option.label);
                     label += ":";
 
@@ -246,7 +246,7 @@ void OG_CustomCtrl::OnMotion(wxMouseEvent& event)
 
     wxString language = wxGetApp().app_config->get("translation_language");
 
-    bool suppress_hyperlinks = get_app_config()->get("suppress_hyperlinks") == "1";
+    const bool suppress_hyperlinks = get_app_config()->get_bool("suppress_hyperlinks");
 
     for (CtrlLine& line : ctrl_lines) {
         line.is_focused = is_point_in_rect(pos, line.rect_label);
@@ -567,7 +567,7 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord v_pos)
 
     Field* field = ctrl->opt_group->get_field(og_line.get_options().front().opt_id);
 
-    bool suppress_hyperlinks = get_app_config()->get("suppress_hyperlinks") == "1";
+    const bool suppress_hyperlinks = get_app_config()->get_bool("suppress_hyperlinks");
     if (draw_just_act_buttons) {
         if (field)
             draw_act_bmps(dc, wxPoint(0, v_pos), field->undo_to_sys_bitmap(), field->undo_bitmap(), field->blink());
@@ -622,9 +622,9 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord v_pos)
         ConfigOptionDef option = opt.opt;
         // add label if any
         if (is_multioption_line && !option.label.empty()) {
-            //!            To correct translation by context have to use wxGETTEXT_IN_CONTEXT macro from wxWidget 3.1.1
-            label = (option.label == L_CONTEXT("Top", "Layers") || option.label == L_CONTEXT("Bottom", "Layers")) ?
-                    _CTX(option.label, "Layers") : _(option.label);
+            // those two parameter names require localization with context
+            label = (option.label == "Top" || option.label == "Bottom") ?
+                _CTX(option.label, "Layers") : _(option.label);
             label += ":";
 
             if (is_url_string)

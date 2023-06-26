@@ -122,8 +122,8 @@ static wxIcon main_frame_icon(GUI_App::EAppMode app_mode)
 #endif // _WIN32
 }
 
-MainFrame::MainFrame() :
-DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe"),
+MainFrame::MainFrame(const int font_point_size) :
+DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe", font_point_size),
     m_printhost_queue_dlg(new PrintHostQueueDialog(this))
     , m_recent_projects(9)
     , m_settings_dialog(this)
@@ -272,7 +272,7 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_S
     update_ui_from_settings();    // FIXME (?)
 
     if (m_plater != nullptr) {
-        m_plater->get_collapse_toolbar().set_enabled(wxGetApp().app_config->get("show_collapse_button") == "1");
+        m_plater->get_collapse_toolbar().set_enabled(wxGetApp().app_config->get_bool("show_collapse_button"));
         m_plater->show_action_buttons(true);
 
         preferences_dialog = new PreferencesDialog(this);
@@ -314,9 +314,9 @@ void MainFrame::bind_diff_dialog()
             process(diff_dlg_type);
     };
 
-    diff_dialog.Bind(EVT_DIFF_DIALOG_TRANSFER,      [this, process_options, transfer](SimpleEvent&)         { process_options(transfer); });
+    diff_dialog.Bind(EVT_DIFF_DIALOG_TRANSFER,      [process_options, transfer](SimpleEvent&)         { process_options(transfer); });
 
-    diff_dialog.Bind(EVT_DIFF_DIALOG_UPDATE_PRESETS,[this, process_options, update_presets](SimpleEvent&)   { process_options(update_presets); });
+    diff_dialog.Bind(EVT_DIFF_DIALOG_UPDATE_PRESETS,[process_options, update_presets](SimpleEvent&)   { process_options(update_presets); });
 }
 
 
@@ -442,9 +442,9 @@ void MainFrame::update_layout()
     };
 
     ESettingsLayout layout = wxGetApp().is_gcode_viewer() ? ESettingsLayout::GCodeViewer :
-        (wxGetApp().app_config->get("old_settings_layout_mode") == "1" ? ESettingsLayout::Old :
-            wxGetApp().app_config->get("new_settings_layout_mode") == "1" ? ( wxGetApp().tabs_as_menu() ? ESettingsLayout::Old : ESettingsLayout::New) :
-            wxGetApp().app_config->get("dlg_settings_layout_mode") == "1" ? ESettingsLayout::Dlg : ESettingsLayout::Old);
+        (wxGetApp().app_config->get_bool("old_settings_layout_mode") ? ESettingsLayout::Old :
+         wxGetApp().app_config->get_bool("new_settings_layout_mode") ? ( wxGetApp().tabs_as_menu() ? ESettingsLayout::Old : ESettingsLayout::New) :
+         wxGetApp().app_config->get_bool("dlg_settings_layout_mode") ? ESettingsLayout::Dlg : ESettingsLayout::Old);
 
     if (m_layout == layout)
         return;
@@ -652,7 +652,8 @@ void MainFrame::shutdown()
 	wxGetApp().other_instance_message_handler()->shutdown(this);
     // Save the slic3r.ini.Usually the ini file is saved from "on idle" callback,
     // but in rare cases it may not have been called yet.
-    wxGetApp().app_config->save();
+    if (wxGetApp().app_config->dirty())
+        wxGetApp().app_config->save();
 //         if (m_plater)
 //             m_plater->print = undef;
 //         Slic3r::GUI::deregister_on_request_update_callback();
@@ -943,7 +944,7 @@ bool MainFrame::can_export_supports() const
     const PrintObjects& objects = m_plater->sla_print().objects();
     for (const SLAPrintObject* object : objects)
     {
-        if (!object->support_mesh().empty())
+        if (!object->support_mesh().empty() || !object->pad_mesh().empty())
         {
             can_export = true;
             break;
@@ -1000,7 +1001,7 @@ bool MainFrame::can_eject() const
 
 bool MainFrame::can_slice() const
 {
-    bool bg_proc = wxGetApp().app_config->get("background_processing") == "1";
+    bool bg_proc = wxGetApp().app_config->get_bool("background_processing");
     return (m_plater != nullptr) ? !m_plater->model().objects.empty() && !bg_proc : false;
 }
 
@@ -1197,10 +1198,10 @@ static void add_common_view_menu_items(wxMenu* view_menu, MainFrame* mainFrame, 
     append_menu_item(view_menu, wxID_ANY, _L("Iso") + sep + "&0", _L("Iso View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("iso"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
     view_menu->AppendSeparator();
-    //TRN To be shown in the main menu View->Top 
+    //TRN Main menu: View->Top 
     append_menu_item(view_menu, wxID_ANY, _L("Top") + sep + "&1", _L("Top View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("top"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
-    //TRN To be shown in the main menu View->Bottom 
+    //TRN Main menu: View->Bottom 
     append_menu_item(view_menu, wxID_ANY, _L("Bottom") + sep + "&2", _L("Bottom View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("bottom"); },
         "", nullptr, [can_change_view]() { return can_change_view(); }, mainFrame);
     append_menu_item(view_menu, wxID_ANY, _L("Front") + sep + "&3", _L("Front View"), [mainFrame](wxCommandEvent&) { mainFrame->select_view("front"); },
@@ -1253,7 +1254,6 @@ void MainFrame::init_menubar_as_editor()
                             recent_projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
                         }
                     wxGetApp().app_config->set_recent_projects(recent_projects);
-                    wxGetApp().app_config->save();
                 }
             }
             }, wxID_FILE1, wxID_FILE9);
@@ -1293,6 +1293,10 @@ void MainFrame::init_menubar_as_editor()
             [this](wxCommandEvent&) { if (m_plater) m_plater->import_sl1_archive(); }, "import_plater", nullptr,
             [this](){return m_plater != nullptr && m_plater->get_ui_job_worker().is_idle(); }, this);
     
+        append_menu_item(import_menu, wxID_ANY, _L("Import ZIP Archive") + dots, _L("Load a ZIP archive"),
+            [this](wxCommandEvent&) { if (m_plater) m_plater->import_zip_archive(); }, "import_plater", nullptr,
+            [this]() {return m_plater != nullptr; }, this);
+
         import_menu->AppendSeparator();
         append_menu_item(import_menu, wxID_ANY, _L("Import &Config") + dots + "\tCtrl+L", _L("Load exported configuration file"),
             [this](wxCommandEvent&) { load_config_file(); }, "import_config", nullptr,
@@ -1497,7 +1501,7 @@ void MainFrame::init_menubar_as_editor()
         
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Open New Instance") + "\tCtrl+Shift+I", _L("Open a new PrusaSlicer instance"),
-            [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr, [this]() {return m_plater != nullptr && wxGetApp().app_config->get("single_instance") != "1"; }, this);
+            [](wxCommandEvent&) { start_new_slicer(); }, "", nullptr, [this]() {return m_plater != nullptr && !wxGetApp().app_config->get_bool("single_instance"); }, this);
 
         windowMenu->AppendSeparator();
         append_menu_item(windowMenu, wxID_ANY, _L("Compare Presets")/* + "\tCtrl+F"*/, _L("Compare presets"), 
@@ -1536,6 +1540,7 @@ void MainFrame::init_menubar_as_editor()
     // assign menubar to frame after appending items, otherwise special items
     // will not be handled correctly
     m_menubar = new wxMenuBar();
+    m_menubar->SetFont(this->normal_font());
     m_menubar->Append(fileMenu, _L("&File"));
     if (editMenu) m_menubar->Append(editMenu, _L("&Edit"));
     m_menubar->Append(windowMenu, _L("&Window"));
@@ -1634,7 +1639,7 @@ void MainFrame::init_menubar_as_gcodeviewer()
         viewMenu = new wxMenu();
         add_common_view_menu_items(viewMenu, this, std::bind(&MainFrame::can_change_view, this));
         viewMenu->AppendSeparator();
-        append_menu_check_item(viewMenu, wxID_ANY, _L("Show legen&d") + sep + "L", _L("Show legend"),
+        append_menu_check_item(viewMenu, wxID_ANY, _L("Show Legen&d") + sep + "L", _L("Show legend"),
             [this](wxCommandEvent&) { m_plater->show_legend(!m_plater->is_legend_shown()); }, this,
             [this]() { return m_plater->is_preview_shown(); }, [this]() { return m_plater->is_legend_shown(); }, this);
     }
@@ -1751,7 +1756,7 @@ void MainFrame::quick_slice(const int qs)
     } 
     else if (qs & qsSaveAs) {
         // The following line may die if the output_filename_format template substitution fails.
-        wxFileDialog dlg(this, from_u8((boost::format(_utf8(L("Save %s file as:"))) % ((qs & qsExportSVG) ? _L("SVG") : _L("G-code"))).str()),
+        wxFileDialog dlg(this, format_wxstr(_L("Save %s file as:"), ((qs & qsExportSVG) ? _L("SVG") : _L("G-code"))),
             wxGetApp().app_config->get_last_output_dir(get_dir_name(output_file)), get_base_name(input_file), 
             qs & qsExportSVG ? file_wildcards(FT_SVG) : file_wildcards(FT_GCODE),
             wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
@@ -1763,7 +1768,7 @@ void MainFrame::quick_slice(const int qs)
         wxGetApp().app_config->update_last_output_dir(get_dir_name(output_file));
     } 
     else if (qs & qsExportPNG) {
-        wxFileDialog dlg(this, _L("Save zip file as:"),
+        wxFileDialog dlg(this, _L("Save ZIP file as:"),
             wxGetApp().app_config->get_last_output_dir(get_dir_name(output_file)),
             get_base_name(output_file), "*.sl1", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
         if (dlg.ShowModal() != wxID_OK)
@@ -1773,8 +1778,8 @@ void MainFrame::quick_slice(const int qs)
 
     // show processbar dialog
     m_progress_dialog = new wxProgressDialog(_L("Slicing") + dots,
-        // TRN "Processing input_file_basename"
-        from_u8((boost::format(_utf8(L("Processing %s"))) % (input_file_basename + dots)).str()),
+        // TRN ProgressDialog on reslicing: "input file basename"
+        format_wxstr(_L("Processing %s"), (input_file_basename + dots)),
         100, nullptr, wxPD_AUTO_HIDE);
     m_progress_dialog->Pulse();
     {
@@ -2182,7 +2187,6 @@ void MainFrame::add_to_recent_projects(const wxString& filename)
             recent_projects.push_back(into_u8(m_recent_projects.GetHistoryFile(i)));
         }
         wxGetApp().app_config->set_recent_projects(recent_projects);
-        wxGetApp().app_config->save();
     }
 }
 
@@ -2203,7 +2207,7 @@ void MainFrame::technology_changed()
 // Update the UI based on the current preferences.
 void MainFrame::update_ui_from_settings()
 {
-//    const bool bp_on = wxGetApp().app_config->get("background_processing") == "1";
+//    const bool bp_on = wxGetApp().app_config->get_bool("background_processing");
 //     m_menu_item_reslice_now->Enable(!bp_on);
 //    m_plater->sidebar().show_reslice(!bp_on);
 //    m_plater->sidebar().show_export(bp_on);
@@ -2234,7 +2238,7 @@ std::string MainFrame::get_dir_name(const wxString &full_name) const
 // ----------------------------------------------------------------------------
 
 SettingsDialog::SettingsDialog(MainFrame* mainframe)
-:DPIFrame(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog"),
+:DPIFrame(NULL, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "settings_dialog", mainframe->normal_font().GetPointSize()),
 //: DPIDialog(mainframe, wxID_ANY, wxString(SLIC3R_APP_NAME) + " - " + _L("Settings"), wxDefaultPosition, wxDefaultSize,
 //        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER | wxMINIMIZE_BOX | wxMAXIMIZE_BOX, "settings_dialog"),
     m_main_frame(mainframe)

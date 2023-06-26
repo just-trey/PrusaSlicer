@@ -223,7 +223,7 @@ void GLGizmosManager::update_data()
         m_common_gizmos_data->update(get_current()
                                    ? get_current()->get_requirements()
                                    : CommonGizmosDataID(0));
-    if (m_current != Undefined) m_gizmos[m_current]->data_changed();
+    if (m_current != Undefined) m_gizmos[m_current]->data_changed(m_serializing);
 }
 
 bool GLGizmosManager::is_running() const
@@ -238,15 +238,24 @@ bool GLGizmosManager::is_running() const
 
 bool GLGizmosManager::handle_shortcut(int key)
 {
-    if (!m_enabled || m_parent.get_selection().is_empty())
+    if (!m_enabled)
         return false;
 
-    auto it = std::find_if(m_gizmos.begin(), m_gizmos.end(),
-            [key](const std::unique_ptr<GLGizmoBase>& gizmo) {
-                int gizmo_key = gizmo->get_shortcut_key();
-                return gizmo->is_activable()
-                       && ((gizmo_key == key - 64) || (gizmo_key == key - 96));
-    });
+    auto is_key = [pressed_key = key](int gizmo_key) { return (gizmo_key == pressed_key - 64) || (gizmo_key == pressed_key - 96); };
+    // allowe open shortcut even when selection is empty    
+    if (GLGizmoBase* gizmo_emboss = m_gizmos[Emboss].get();
+        is_key(gizmo_emboss->get_shortcut_key())) {
+        dynamic_cast<GLGizmoEmboss *>(gizmo_emboss)->on_shortcut_key();
+        return true;
+    }
+
+    if (m_parent.get_selection().is_empty())
+        return false;
+
+    auto is_gizmo = [is_key](const std::unique_ptr<GLGizmoBase> &gizmo) {
+        return gizmo->is_activable() && is_key(gizmo->get_shortcut_key());
+    };
+    auto it = std::find_if(m_gizmos.begin(), m_gizmos.end(), is_gizmo);
 
     if (it == m_gizmos.end())
         return false;
@@ -623,7 +632,7 @@ bool GLGizmosManager::on_key(wxKeyEvent& evt)
         else if (m_current == Cut) {
             auto do_move = [this, &processed](double delta_z) {
                 GLGizmoCut3D* cut = dynamic_cast<GLGizmoCut3D*>(get_current());
-                cut->shift_cut_z(delta_z);
+                cut->shift_cut(delta_z);
                 processed = true;
             };
 
@@ -740,6 +749,7 @@ void GLGizmosManager::render_arrow(const GLCanvas3D& parent, EType highlighted_t
     const float icons_size_x = 2.0f * m_layout.scaled_icons_size() * inv_cnv_w;
     const float icons_size_y = 2.0f * m_layout.scaled_icons_size() * inv_cnv_h;
     const float stride_y = 2.0f * m_layout.scaled_stride_y() * inv_cnv_h;
+    top_y -= stride_y;
 
     for (size_t idx : selectable_idxs) {
         if (idx == highlighted_type) {
@@ -949,6 +959,8 @@ bool GLGizmosManager::activate_gizmo(EType type)
     if (type == Undefined) { 
         // it is deactivation of gizmo
         m_current = Undefined;
+        if (m_parent.current_printer_technology() == ptSLA)
+            m_parent.detect_sla_view_type();
         return true;
     }
 
@@ -967,6 +979,9 @@ bool GLGizmosManager::activate_gizmo(EType type)
         m_current = Undefined;
         return false; // gizmo refused to be turned on.
     }
+
+    if (m_parent.current_printer_technology() == ptSLA)
+        m_parent.set_sla_view_type(GLCanvas3D::ESLAViewType::Original);
 
     new_gizmo.register_raycasters_for_picking();
 

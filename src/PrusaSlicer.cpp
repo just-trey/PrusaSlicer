@@ -72,6 +72,8 @@ int CLI::run(int argc, char **argv)
 {
     // Mark the main thread for the debugger and for runtime checks.
     set_current_thread_name("slic3r_main");
+    // Save the thread ID of the main thread.
+    save_main_thread_id();
 
 #ifdef __WXGTK__
     // On Linux, wxGTK has no support for Wayland, and the app crashes on
@@ -380,7 +382,7 @@ int CLI::run(int argc, char **argv)
         } else if (opt_key == "align_xy") {
             const Vec2d &p = m_config.option<ConfigOptionPoint>("align_xy")->value;
             for (auto &model : m_models) {
-                BoundingBoxf3 bb = model.bounding_box();
+                BoundingBoxf3 bb = model.bounding_box_exact();
                 // this affects volumes:
                 model.translate(-(bb.min.x() - p.x()), -(bb.min.y() - p.y()), -bb.min.z());
             }
@@ -421,7 +423,7 @@ int CLI::run(int argc, char **argv)
         } else if (opt_key == "cut" || opt_key == "cut_x" || opt_key == "cut_y") {
             std::vector<Model> new_models;
             for (auto &model : m_models) {
-                model.translate(0, 0, -model.bounding_box().min.z());  // align to z = 0
+                model.translate(0, 0, -model.bounding_box_exact().min.z());  // align to z = 0
                 size_t num_objects = model.objects.size();
                 for (size_t i = 0; i < num_objects; ++ i) {
 

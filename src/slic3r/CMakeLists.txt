@@ -97,6 +97,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/GUI_Geometry.hpp
     GUI/I18N.cpp
     GUI/I18N.hpp
+    GUI/IconManager.cpp
+    GUI/IconManager.hpp
     GUI/MainFrame.cpp
     GUI/MainFrame.hpp
     GUI/Plater.cpp
@@ -157,6 +159,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/RemovableDriveManager.hpp
     GUI/SendSystemInfoDialog.cpp
     GUI/SendSystemInfoDialog.hpp
+    GUI/SurfaceDrag.cpp
+    GUI/SurfaceDrag.hpp
     GUI/BonjourDialog.cpp
     GUI/BonjourDialog.hpp
     GUI/ButtonsDescription.cpp
@@ -188,6 +192,7 @@ set(SLIC3R_GUI_SOURCES
     GUI/Jobs/BoostThreadWorker.cpp
     GUI/Jobs/UIThreadWorker.hpp
     GUI/Jobs/BusyCursorJob.hpp
+    GUI/Jobs/CancellableJob.hpp
     GUI/Jobs/PlaterWorker.hpp
     GUI/Jobs/ArrangeJob.hpp
     GUI/Jobs/ArrangeJob.cpp
@@ -246,6 +251,8 @@ set(SLIC3R_GUI_SOURCES
     Utils/Http.hpp
     Utils/FixModelByWin10.cpp
     Utils/FixModelByWin10.hpp
+    Utils/Moonraker.cpp
+    Utils/Moonraker.hpp
     Utils/OctoPrint.cpp
     Utils/OctoPrint.hpp
     Utils/Duet.cpp
@@ -340,3 +347,6 @@ if (UNIX AND NOT APPLE)
     target_include_directories(libslic3r_gui PRIVATE ${GTK${SLIC3R_GTK}_INCLUDE_DIRS})
     target_link_libraries(libslic3r_gui ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig)
 endif ()
+
+# Add a definition so that we can tell we are compiling slic3r.
+target_compile_definitions(libslic3r_gui PRIVATE SLIC3R_CURRENTLY_COMPILING_GUI_MODULE)

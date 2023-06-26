@@ -166,6 +166,7 @@ public:
     void load_project();
     void load_project(const wxString& filename);
     void add_model(bool imperial_units = false);
+    void import_zip_archive();
     void import_sl1_archive();
     void extract_config_from_project();
     void load_gcode();
@@ -184,7 +185,12 @@ public:
 
     const wxString& get_last_loaded_gcode() const { return m_last_loaded_gcode; }
 
-    void update();
+    enum class UpdateParams {
+        FORCE_FULL_SCREEN_REFRESH = 1,
+        FORCE_BACKGROUND_PROCESSING_UPDATE = 2,
+        POSTPONE_VALIDATION_ERROR_MESSAGE = 4,
+    };
+    void update(unsigned int flags = 0);
 
     // Get the worker handling the UI jobs (arrange, fill bed, etc...)
     // Here is an example of starting up an ad-hoc job:
@@ -249,9 +255,9 @@ public:
     void reset_with_confirm();
     bool delete_object_from_model(size_t obj_idx);
     void remove_selected();
-    void increase_instances(size_t num = 1);
-    void decrease_instances(size_t num = 1);
-    void set_number_of_copies(/*size_t num*/);
+    void increase_instances(size_t num = 1, int obj_idx = -1, int inst_idx = -1);
+    void decrease_instances(size_t num = 1, int obj_idx = -1);
+    void set_number_of_copies();
     void fill_bed_with_instances();
     bool is_selection_empty() const;
     void scale_selection_to_fit_print_volume();
@@ -259,6 +265,7 @@ public:
     void toggle_layers_editing(bool enable);
 
     void cut(size_t obj_idx, size_t instance_idx, const Transform3d& cut_matrix, ModelObjectCutAttributes attributes);
+    void cut(size_t init_obj_idx, const ModelObjectPtrs& cut_objects);
 
     void export_gcode(bool prefer_removable);
     void export_stl_obj(bool extended = false, bool selection_only = false);
@@ -273,7 +280,7 @@ public:
     void reslice_FFF_until_step(PrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
     void reslice_SLA_until_step(SLAPrintObjectStep step, const ModelObject &object, bool postpone_error_messages = false);
 
-    void clear_before_change_mesh(int obj_idx);
+    void clear_before_change_mesh(int obj_idx, const std::string &notification_msg);
     void changed_mesh(int obj_idx);
 
     void changed_object(int obj_idx);
@@ -307,6 +314,7 @@ public:
     bool update_filament_colors_in_full_config();
     void on_config_change(const DynamicPrintConfig &config);
     void force_filament_colors_update();
+    void force_filament_cb_update();
     void force_print_bed_update();
     // On activating the parent window.
     void on_activate();
@@ -330,7 +338,6 @@ public:
     GLCanvas3D* get_current_canvas3D();
     
     void arrange();
-    void find_new_position(const ModelInstancePtrs  &instances);
 
     void set_current_canvas_as_dirty();
     void unbind_canvas_event_handlers();
@@ -350,7 +357,7 @@ public:
     bool can_delete() const;
     bool can_delete_all() const;
     bool can_increase_instances() const;
-    bool can_decrease_instances() const;
+    bool can_decrease_instances(int obj_idx = -1) const;
     bool can_set_instance_to_object() const;
     bool can_fix_through_netfabb() const;
     bool can_simplify() const;
@@ -391,6 +398,8 @@ public:
 
     const GLToolbar& get_collapse_toolbar() const;
     GLToolbar& get_collapse_toolbar();
+
+    void set_preview_layers_slider_values_range(int bottom, int top);
 
     void update_preview_moves_slider();
     void enable_preview_moves_slider(bool enable);
@@ -505,6 +514,16 @@ public:
     ~SuppressBackgroundProcessingUpdate();
 private:
     bool m_was_scheduled;
+};
+
+class PlaterAfterLoadAutoArrange
+{
+    bool m_enabled{ false };
+
+public:
+    PlaterAfterLoadAutoArrange();
+    ~PlaterAfterLoadAutoArrange();
+    void disable() { m_enabled = false; }
 };
 
 } // namespace GUI

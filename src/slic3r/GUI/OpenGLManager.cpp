@@ -7,6 +7,7 @@
 #endif // ENABLE_GL_CORE_PROFILE
 #include "I18N.hpp"
 #include "3DScene.hpp"
+#include "format.hpp"
 
 #include "libslic3r/Platform.hpp"
 
@@ -371,16 +372,16 @@ bool OpenGLManager::init_gl()
 
         if (!valid_version) {
             // Complain about the OpenGL version.
-            wxString message = from_u8((boost::format(
+            wxString message = format_wxstr(
 #if ENABLE_OPENGL_ES
-                _utf8(L("PrusaSlicer requires OpenGL ES 2.0 capable graphics driver to run correctly, \n"
-                    "while OpenGL version %s, render %s, vendor %s was detected."))) % s_gl_info.get_version_string() % s_gl_info.get_renderer() % s_gl_info.get_vendor()).str());
+                _L("PrusaSlicer requires OpenGL ES 2.0 capable graphics driver to run correctly, \n"
+                    "while OpenGL version %s, render %s, vendor %s was detected."), s_gl_info.get_version_string(), s_gl_info.get_renderer(), s_gl_info.get_vendor());
 #elif ENABLE_GL_CORE_PROFILE
-                _utf8(L("PrusaSlicer requires OpenGL %s capable graphics driver to run correctly, \n"
-                    "while OpenGL version %s, render %s, vendor %s was detected."))) % (s_gl_info.is_core_profile() ? "3.3" : "2.0") % s_gl_info.get_version_string() % s_gl_info.get_renderer() % s_gl_info.get_vendor()).str());
+                _L("PrusaSlicer requires OpenGL %s capable graphics driver to run correctly, \n"
+                    "while OpenGL version %s, render %s, vendor %s was detected."), (s_gl_info.is_core_profile() ? "3.3" : "2.0"), s_gl_info.get_version_string(), s_gl_info.get_renderer(), s_gl_info.get_vendor());
 #else
-                _utf8(L("PrusaSlicer requires OpenGL 2.0 capable graphics driver to run correctly, \n"
-                    "while OpenGL version %s, render %s, vendor %s was detected."))) % s_gl_info.get_version_string() % s_gl_info.get_renderer() % s_gl_info.get_vendor()).str());
+                _L("PrusaSlicer requires OpenGL 2.0 capable graphics driver to run correctly, \n"
+                    "while OpenGL version %s, render %s, vendor %s was detected."), s_gl_info.get_version_string(), s_gl_info.get_renderer(), s_gl_info.get_vendor());
 #endif // ENABLE_OPENGL_ES
             message += "\n";
         	message += _L("You may need to update your graphics card driver.");
@@ -395,8 +396,7 @@ bool OpenGLManager::init_gl()
             // load shaders
             auto [result, error] = m_shaders_manager.init();
             if (!result) {
-                wxString message = from_u8((boost::format(
-                    _utf8(L("Unable to load the following shaders:\n%s"))) % error).str());
+                wxString message = format_wxstr(_L("Unable to load the following shaders:\n%s"), error);
                 wxMessageBox(message, wxString("PrusaSlicer - ") + _L("Error loading shaders"), wxOK | wxICON_ERROR);
             }
 #if ENABLE_OPENGL_DEBUG_OPTION
@@ -419,9 +419,12 @@ bool OpenGLManager::init_gl()
         // There is no an easy way to detect the driver version without using Win32 API because the strings returned by OpenGL
         // have no standardized format, only some of them contain the driver version.
         // Until we do not know that driver will be fixed (if ever) we force the use of power of two textures on all cards
-        // containing the string 'Radeon' in the string returned by glGetString(GL_RENDERER)
+        // 1) containing the string 'Radeon' in the string returned by glGetString(GL_RENDERER)
+        // 2) containing the string 'Custom' in the string returned by glGetString(GL_RENDERER)
         const auto& gl_info = OpenGLManager::get_gl_info();
-        if (boost::contains(gl_info.get_vendor(), "ATI Technologies Inc.") && boost::contains(gl_info.get_renderer(), "Radeon"))
+        if (boost::contains(gl_info.get_vendor(), "ATI Technologies Inc.") &&
+           (boost::contains(gl_info.get_renderer(), "Radeon") ||
+            boost::contains(gl_info.get_renderer(), "Custom")))
             s_force_power_of_two_textures = true;
 #endif // _WIN32
     }

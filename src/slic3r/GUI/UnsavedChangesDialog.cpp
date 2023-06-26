@@ -837,7 +837,8 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection* dependent_
     // ys_FIXME! temporary workaround for correct font scaling
     // Because of from wxWidgets 3.1.3 auto rescaling is implemented for the Fonts,
     // From the very beginning set dialog font to the wxSYS_DEFAULT_GUI_FONT
-    this->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+//    this->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+    this->SetFont(wxGetApp().normal_font());
 #endif // __WXMSW__
 
     int border = 10;
@@ -850,15 +851,16 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection* dependent_
         add_new_value_column = false;
 
     m_action_line = new wxStaticText(this, wxID_ANY, "");
-    m_action_line->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold());
+//    m_action_line->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold());
+    m_action_line->SetFont(wxGetApp().bold_font());
 
     m_tree = new DiffViewCtrl(this, wxSize(em * (add_new_value_column ? 80 : 60), em * 30));
     m_tree->AppendToggleColumn_(L"\u2714"      , DiffModel::colToggle, wxLinux ? 9 : 6);
     m_tree->AppendBmpTextColumn(""             , DiffModel::colIconText, 28);
-    m_tree->AppendBmpTextColumn(_L("Original Value"), DiffModel::colOldValue, 12);
-    m_tree->AppendBmpTextColumn(_L("Modified Value"), DiffModel::colModValue, 12);
+    m_tree->AppendBmpTextColumn(_L("Original value"), DiffModel::colOldValue, 12);
+    m_tree->AppendBmpTextColumn(_L("Modified value"), DiffModel::colModValue, 12);
     if (add_new_value_column)
-        m_tree->AppendBmpTextColumn(_L("New Value"), DiffModel::colNewValue, 12);
+        m_tree->AppendBmpTextColumn(_L("New value"), DiffModel::colNewValue, 12);
 
     // Add Buttons 
     wxFont      btn_font = this->GetFont().Scaled(1.4f);
@@ -910,7 +912,8 @@ void UnsavedChangesDialog::build(Preset::Type type, PresetCollection* dependent_
     cancel_btn->Bind(wxEVT_BUTTON, [this](wxEvent&) { this->EndModal(wxID_CANCEL); });
 
     m_info_line = new wxStaticText(this, wxID_ANY, "");
-    m_info_line->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold());
+//    m_info_line->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold());
+    m_info_line->SetFont(wxGetApp().bold_font());
     m_info_line->Hide();
 
     if (!m_app_config_key.empty()) {
@@ -1012,7 +1015,7 @@ bool UnsavedChangesDialog::save(PresetCollection* dependent_presets, bool show_s
 
         // for system/default/external presets we should take an edited name
         if (preset.is_system || preset.is_default || preset.is_external) {
-            SavePresetDialog save_dlg(this, preset.type);
+            SavePresetDialog save_dlg(this, { preset.type });
             if (save_dlg.ShowModal() != wxID_OK) {
                 m_exit_action = Action::Discard;
                 return false;
@@ -1054,27 +1057,6 @@ bool UnsavedChangesDialog::save(PresetCollection* dependent_presets, bool show_s
         }
     }
     return true;
-}
-
-wxString get_string_from_enum(const std::string& opt_key, const DynamicPrintConfig& config, bool is_infill = false)
-{
-    const ConfigOptionDef& def = config.def()->options.at(opt_key);
-    const std::vector<std::string>& names = def.enum_labels.empty() ? def.enum_values : def.enum_labels;
-    int val = config.option(opt_key)->getInt();
-
-    // Each infill doesn't use all list of infill declared in PrintConfig.hpp.
-    // So we should "convert" val to the correct one
-    if (is_infill) {
-        for (auto key_val : *def.enum_keys_map)
-            if (int(key_val.second) == val) {
-                auto it = std::find(def.enum_values.begin(), def.enum_values.end(), key_val.first);
-                if (it == def.enum_values.end())
-                    return "";
-                return from_u8(_utf8(names[it - def.enum_values.begin()]));
-            }
-        return _L("Undef");
-    }
-    return from_u8(_utf8(names[val]));
 }
 
 static size_t get_id_from_opt_key(std::string opt_key)
@@ -1214,11 +1196,8 @@ static wxString get_string_value(std::string opt_key, const DynamicPrintConfig& 
         return out;
     }
     case coEnum: {
-        return get_string_from_enum(opt_key, config, 
-            opt_key == "top_fill_pattern" ||
-            opt_key == "bottom_fill_pattern" ||
-            opt_key == "fill_pattern" ||
-            opt_key == "support_material_style");
+        auto opt = config.option_def(opt_key)->enum_def->enum_to_label(config.option(opt_key)->getInt());
+        return opt.has_value() ? _(from_u8(*opt)) : _L("Undef");
     }
     case coPoints: {
         if (opt_key == "bed_shape") {
@@ -1386,6 +1365,7 @@ FullCompareDialog::FullCompareDialog(const wxString& option_name, const wxString
     : wxDialog(nullptr, wxID_ANY, option_name, wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     wxGetApp().UpdateDarkUI(this);
+    this->SetFont(wxGetApp().normal_font());
 
     int border = 10;
     bool has_new_value_column = !new_value_header.IsEmpty();
@@ -1552,7 +1532,8 @@ void DiffPresetDialog::create_show_all_presets_chb()
 
 void DiffPresetDialog::create_info_lines()
 {
-    const wxFont font = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold();
+//    const wxFont font = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT).Bold();
+    const wxFont font = GetFont().Bold();
 
     m_top_info_line = new wxStaticText(this, wxID_ANY, _L("Select presets to compare"));
     m_top_info_line->SetFont(font);
@@ -1615,15 +1596,15 @@ void DiffPresetDialog::create_buttons()
         }
         evt.Enable(enable);
     });
-    m_transfer_btn->Bind(wxEVT_ENTER_WINDOW, [this, show_in_bottom_info](wxMouseEvent& e) {
+    m_transfer_btn->Bind(wxEVT_ENTER_WINDOW, [show_in_bottom_info](wxMouseEvent& e) {
         show_in_bottom_info(_L("Transfer the selected options from left preset to the right.\n"
-                            "Note: New modified presets will be selected in setting stabs after close this dialog."), e); });
+                            "Note: New modified presets will be selected in settings tabs after close this dialog."), e); });
 
     // Save
     m_save_btn = new ScalableButton(this, wxID_ANY, "save", _L("Save"), wxDefaultSize, wxDefaultPosition, wxBORDER_DEFAULT, 24);
     m_save_btn->Bind(wxEVT_BUTTON, [this](wxEvent&) { button_event(Action::Save); });
     m_save_btn->Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& evt) { evt.Enable(m_tree->has_selection()); });
-    m_save_btn->Bind(wxEVT_ENTER_WINDOW, [this, show_in_bottom_info](wxMouseEvent& e) {
+    m_save_btn->Bind(wxEVT_ENTER_WINDOW, [show_in_bottom_info](wxMouseEvent& e) {
         show_in_bottom_info(_L("Save the selected options from left preset to the right."), e); });
 
     // Cancel
@@ -1692,7 +1673,8 @@ DiffPresetDialog::DiffPresetDialog(MainFrame* mainframe)
     // ys_FIXME! temporary workaround for correct font scaling
     // Because of from wxWidgets 3.1.3 auto rescaling is implemented for the Fonts,
     // From the very beginning set dialog font to the wxSYS_DEFAULT_GUI_FONT
-    this->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+//    this->SetFont(wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT));
+    this->SetFont(mainframe->normal_font());
 #endif // __WXMSW__
 
     // Init bundles
