@@ -49,22 +49,12 @@ if (SLIC3R_GUI)
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set (wxWidgets_CONFIG_OPTIONS "--toolkit=gtk${SLIC3R_GTK}")
-        find_package(wxWidgets 3.1.6 QUIET COMPONENTS base core adv html gl)
-        if (NOT wxWidgets_FOUND)
-            message(FATAL_ERROR "Could not find wxWidgets >= 3.1.6")
-        endif ()
-
-        include(${wxWidgets_USE_FILE})
-    else ()
-        find_package(wxWidgets 3.1.6 COMPONENTS html adv gl core base)
-        if (NOT wxWidgets_FOUND)
-            message(STATUS "Trying to find wxWidgets in CONFIG mode...")
-            find_package(wxWidgets 3.1.6 CONFIG REQUIRED COMPONENTS html adv gl core base)
-            slic3r_remap_configs(wx::wxhtml wx::wxadv wx::wxgl wx::wxcore wx::wxbase RelWithDebInfo Release)
-        else ()
-            include(${wxWidgets_USE_FILE})
-        endif ()
     endif ()
+    find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS base core adv html gl)
+
+    include(${wxWidgets_USE_FILE})
+
+    slic3r_remap_configs(wx::wxhtml wx::wxadv wx::wxgl wx::wxcore wx::wxbase RelWithDebInfo Release)
 
     if(UNIX)
         message(STATUS "wx-config path: ${wxWidgets_CONFIG_EXECUTABLE}")
